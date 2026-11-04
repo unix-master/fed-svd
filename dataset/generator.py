@@ -14,6 +14,8 @@ sys.path.insert(1, os.path.join(sys.path[0], '..'))
 
 def generate_data(dataset: str, n_clients: int, alpha: float, seed: int):
     st = time.time()
+    np.random.seed(seed)
+    random.seed(seed)
     global iid_path, non_iid_path
     iid_path = os.path.join(DATA_PATH, dataset, 'Questions',
                             f'iid_split_{n_clients}_{alpha}')
@@ -160,6 +162,8 @@ def split_iid(data_dict, n_clients, dataset, has_topics=True, seed=1234):
 
 def split_non_iid(data_dict, n_clients, n_clss, dataset, alpha, seed):
     st = time.time()
+    np.random.seed(seed)
+    random.seed(seed)
     # Generate random distributions for each class using Dirichlet distribution
     dist = np.random.dirichlet([alpha for _ in range(n_clients)], n_clss)
     dist = {clss_id: dist[i] for i, clss_id in enumerate(data_dict.keys())}
@@ -170,7 +174,10 @@ def split_non_iid(data_dict, n_clients, n_clss, dataset, alpha, seed):
         _n_data_per_clss = {clss_id: 0 for clss_id in data_dict.keys()}
         for clss_id in data_dict.keys():
             # Calculate how many samples of this class go to this client based on Dirichlet distribution
-            _n = int(n_data_per_clss[clss_id] * dist[clss_id][client_id])
+            if client_id == n_clients - 1:
+                _n = len(data_dict[clss_id])
+            else:
+                _n = int(n_data_per_clss[clss_id] * dist[clss_id][client_id])
             _n_data_per_clss[clss_id] += _n
 
             # Take the first _n samples of this class
@@ -178,7 +185,7 @@ def split_non_iid(data_dict, n_clients, n_clss, dataset, alpha, seed):
             # Remove the taken samples
             data_dict[clss_id] = data_dict[clss_id][_n:]
 
-        x_part = shuffle(seed, x_part)
+        x_part = shuffle(seed + client_id, x_part)
         # save dicts in list into jsonl format
         jsonl_save(
             non_iid_path, f'{dataset}_non_iid_partition_{client_id}.jsonl', x_part)

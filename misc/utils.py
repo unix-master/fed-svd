@@ -225,7 +225,7 @@ def init_dual_lora(model):
                 dev = module.lora_B[adapter_name].weight.device
                 Q, _ = torch.linalg.qr(torch.randn(d_out, r, device=dev))
                 module.lora_B[adapter_name].weight.data = Q[:, :r].contiguous()
-                torch.nn.init.kaiming_uniform_(module.lora_A[adapter_name].weight.data, a=math.sqrt(5))
+                torch.nn.init.zeros_(module.lora_A[adapter_name].weight.data)
 
 
 def reinit_lora(model, momentum_beta=0.0, dual=False):
