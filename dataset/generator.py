@@ -15,7 +15,7 @@ sys.path.insert(1, os.path.join(sys.path[0], '..'))
 def generate_data(dataset: str, n_clients: int, alpha: float, seed: int):
     st = time.time()
     np.random.seed(seed)
-    random.seed(seed)
+    # random.seed(seed)
     global iid_path, non_iid_path
     iid_path = os.path.join(DATA_PATH, dataset, 'Questions',
                             f'iid_split_{n_clients}_{alpha}')

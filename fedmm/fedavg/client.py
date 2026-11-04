@@ -23,7 +23,7 @@ from transformers import (get_constant_schedule_with_warmup,
 class Client(ClientModule):
     def __init__(self, args, w_id, g_id, sd):
         super().__init__(args, w_id, g_id, sd)
-
+        set_seed(args.seed)
         self.model, self.tokenizer = init_model_and_tokenizer(args)
         self.lora_config = get_lora_config(args)
 

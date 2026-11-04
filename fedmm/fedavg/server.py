@@ -7,7 +7,7 @@ import wandb
 from misc.utils import (assert_layer_num, freeze_target_layers,
                         get_layer_num, get_lora_config, get_state_dict,
                         init_model_and_tokenizer, print_trainable_parameters,
-                        reinit_lora, set_state_dict, torch_load, torch_save)
+                        reinit_lora, set_state_dict, torch_load, torch_save, set_seed)
 from modules.federated import ServerModule
 from peft import get_peft_model
 from tqdm import tqdm
@@ -17,7 +17,7 @@ import torch
 class Server(ServerModule):
     def __init__(self, args, sd, gpu_server):
         super().__init__(args, sd, gpu_server)
-
+        set_seed(args.seed)
         self.model, self.tokenizer = init_model_and_tokenizer(args)
         self.lora_config = get_lora_config(args)
 

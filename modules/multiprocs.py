@@ -61,6 +61,7 @@ class ParentProcess:
             for gpu_id in self.gpus:
                 selected_clients = list(np.random.permutation(self.worker_in_gpu[gpu_id])[:self.n_connected // len(self.gpus)])
                 self.selected.extend(selected_clients)
+            self.selected = [int(c) for c in np.random.permutation(self.args.n_clients)[:self.n_connected]]
             print(f'selected clients: {self.selected}')
 
             st = time.time()
