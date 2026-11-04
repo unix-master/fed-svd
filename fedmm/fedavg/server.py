@@ -1,4 +1,4 @@
-import math
+import os, math
 import time
 from collections import OrderedDict
 
@@ -24,6 +24,9 @@ class Server(ServerModule):
         self.model = get_peft_model(self.model, self.lora_config)
 
         self.model = self.model.cuda(self.gpu_id)
+        if getattr(args, 'dual', False):
+            from misc.utils import init_dual_lora
+            init_dual_lora(self.model)
         freeze_target_layers(args, self.model)
         print_trainable_parameters(self.model)
 
@@ -31,11 +34,13 @@ class Server(ServerModule):
             'rnd_acc': [], 'rnd_lss': []
         }
 
+        wandb_mode = os.environ.get("WANDB_MODE", "disabled" if not os.environ.get("WANDB_API_KEY") else "online")
         self.wandb_run = wandb.init(
             project="fedsvd",
             name=f"{self.args.trial}_server",
             group=self.args.trial,
             config=vars(self.args),
+            mode=wandb_mode
         )
 
         self.scaling_factor = self.args.lora_alpha / self.args.lora_rank
@@ -81,8 +86,8 @@ class Server(ServerModule):
         if self.args.recalculate_svd_period != 0:
             if ((curr_rnd + 1) % self.args.recalculate_svd_period == 0
                     and (curr_rnd + 1) > self.args.svd_warmup_steps):
-                print(f"Server : rerun svd for round {curr_rnd + 1}")
-                reinit_lora(self.model)
+                print(f"Server : rerun svd for round {curr_rnd+1} (subspace_momentum={getattr(self.args, 'subspace_momentum', 0.0)}, dual={getattr(self.args, 'dual', False)})")
+                reinit_lora(self.model, momentum_beta=getattr(self.args, 'subspace_momentum', 0.0), dual=getattr(self.args, 'dual', False))
                 self.sd['global'] = self.get_weights()
 
         # Save server model periodically and at last round
@@ -223,7 +228,8 @@ class Server(ServerModule):
                     aggr_theta[name] = orig_theta[name]
 
             elif self.args.model == 'ffa':
-                if 'lora_B' in name or 'lora_embedding_B' in name:
+                target_key = 'lora_A' if getattr(self.args, 'dual', False) else 'lora_B'
+                if target_key in name or ('lora_embedding_A' if target_key == 'lora_A' else 'lora_embedding_B') in name:
                     update = np.sum(
                         [theta[name] * ratio[j] for j, theta in enumerate(local_weights_diff.values())], 0)
                     aggr_theta[name] = orig_theta[name] + update

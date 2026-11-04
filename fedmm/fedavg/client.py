@@ -1,4 +1,4 @@
-import math
+import os, math
 import time
 from copy import deepcopy
 
@@ -30,6 +30,9 @@ class Client(ClientModule):
         self.model = get_peft_model(self.model, self.lora_config)
 
         self.model = self.model.cuda(self.gpu_id)
+        if getattr(args, 'dual', False):
+            from misc.utils import init_dual_lora
+            init_dual_lora(self.model)
         freeze_target_layers(args, self.model)
         print_trainable_parameters(self.model)
         self.tensor_dataset = None
@@ -44,11 +47,13 @@ class Client(ClientModule):
             'ep_lss': [], 'ep_acc': [],
             'rnd_lss': [], 'rnd_acc': [],
         }
+        wandb_mode = os.environ.get("WANDB_MODE", "disabled" if not os.environ.get("WANDB_API_KEY") else "online")
         self.wandb_run = wandb.init(
             project="fedsvd",
             name=f"{self.args.trial}_client_{self.client_id}",
             group=self.args.trial,
             config=vars(self.args),
+            mode=wandb_mode
         )
         if self.args.dp:
             self.dp_init()
@@ -80,11 +85,13 @@ class Client(ClientModule):
 
         if self.args.resume_from_round is not None:
             set_seed(self.args.seed)
+            wandb_mode = os.environ.get("WANDB_MODE", "disabled" if not os.environ.get("WANDB_API_KEY") else "online")
             self.wandb_run = wandb.init(
                 project="fedsvd",
                 name=f"{self.args.trial}_client_{self.client_id}",
                 group=self.args.trial,
                 config=vars(self.args),
+                mode=wandb_mode
             )
 
         loaded_state = torch_load(

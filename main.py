@@ -4,6 +4,7 @@ from datetime import datetime
 
 from misc.utils import DATA_PATH, set_seed
 from modules.multiprocs import ParentProcess
+import multiprocessing as mp
 
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -49,6 +50,7 @@ def set_config(args):
     return args
 
 if __name__ == '__main__':
+    mp.set_start_method('spawn',force=True)
     main(Parser().parse())
 
 

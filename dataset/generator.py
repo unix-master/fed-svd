@@ -72,6 +72,7 @@ def generate_data(dataset: str, n_clients: int, alpha: float, seed: int):
                         f'{mode}.jsonl', data_list)
             print(f'{mode}.jsonl has been saved')
 
+        split_non_iid(dict_topic_data, n_clients, len(topics), dataset, alpha, seed)
 
     else:
         raise ValueError(f'Unsupported dataset: {dataset}')
@@ -83,7 +84,7 @@ def get_data(dataset: str, seed:int) -> Union[pd.DataFrame, List[Dict[str, str]]
     st = time.time()
     if dataset in glue_features.keys():
         if 'mnli' in dataset:
-            ds = load_dataset("glue", "mnli")
+            ds = load_dataset("nyu-mll/glue", "mnli")
             train_data = ds["train"]
             val_matched, val_mismatched = ds["validation_matched"], ds["validation_mismatched"]
             test_matched, test_mismatched = ds["test_matched"], ds["test_mismatched"]
@@ -96,8 +97,13 @@ def get_data(dataset: str, seed:int) -> Union[pd.DataFrame, List[Dict[str, str]]
             val_data.extend(list(map(_add_is_matched, val_mismatched, [0]*len(val_mismatched))))
             test_data = list(map(_add_is_matched, test_matched, [1]*len(test_matched)))
             test_data.extend(list(map(_add_is_matched, test_mismatched, [0]*len(test_mismatched))))
+        elif 'snli' in dataset:
+            ds = load_dataset("stanfordnlp/snli")
+            train_data = ds["train"]
+            val_data = ds["validation"]
+            test_data = ds["test"]
         else:
-            ds = load_dataset("glue", dataset)
+            ds = load_dataset("nyu-mll/glue", dataset)
             valid_key = 'validation'
             test_key = 'test'
             train_data, val_data, test_data = ds["train"], ds[valid_key], ds[test_key]
@@ -238,6 +244,7 @@ glue_features = {
     "mnli": ("premise", "hypothesis"),
     "qnli": ("question", "sentence"),
     "qqp": ("question1", "question2"),
+    "snli": ("premise", "hypothesis"),
 }
 
 def glue_split_features(x, task):

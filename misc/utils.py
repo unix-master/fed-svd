@@ -20,12 +20,13 @@ ACT_TYPE = {
     'relu': nn.ReLU,
     'gelu': nn.GELU
 }
-GLUE_TASKS = ["qnli", "qqp", "sst2", "mnli"]
+GLUE_TASKS = ["qnli", "qqp", "sst2", "mnli", "snli"]
 NUM_LABELS = {
     "qnli": 2,
     "qqp": 2,
     "sst2": 2,
     "mnli": 3,
+    "snli": 3,
 }
 
 DATA_PATH = './data'
@@ -120,8 +121,12 @@ def receive_state_dict_from_server(
     # Case where only lora_A or lora_B is loaded
     else:
         if model_type == 'ffa':
-            print(f"client {client_id} : FFA - Loading lora_B")
-            filtered_state_dict = {k: v for k, v in state_dict.items() if 'lora_B' in k or 'lora_embedding_B' in k}
+            if getattr(args, 'dual', False):
+                print(f"client {client_id} : FFA (Dual) - Loading lora_A")
+                filtered_state_dict = {k: v for k, v in state_dict.items() if 'lora_A' in k or 'lora_embedding_A' in k}
+            else:
+                print(f"client {client_id} : FFA (Primal) - Loading lora_B")
+                filtered_state_dict = {k: v for k, v in state_dict.items() if 'lora_B' in k or 'lora_embedding_B' in k}
         if args.task in NUM_LABELS:
             print(f"client {client_id} : Loading classifier weights for {args.task}")
             for k, v in state_dict.items():
@@ -209,7 +214,21 @@ def worker_init_fn(worker_id):
     random.seed(seed)
 
 
-def reinit_lora(model):
+def init_dual_lora(model):
+    #?! it's important that B is non-zero and is initialized with orthonormal columns
+    ## if B=0, then gradient w.r.t A will be zero and model will not learn anything
+    import math
+    for module in model.modules():
+        if isinstance(module, LoraLayer):
+            for adapter_name in module.active_adapters:
+                d_out, r = module.lora_B[adapter_name].weight.shape
+                dev = module.lora_B[adapter_name].weight.device
+                Q, _ = torch.linalg.qr(torch.randn(d_out, r, device=dev))
+                module.lora_B[adapter_name].weight.data = Q[:, :r].contiguous()
+                torch.nn.init.kaiming_uniform_(module.lora_A[adapter_name].weight.data, a=math.sqrt(5))
+
+
+def reinit_lora(model, momentum_beta=0.0, dual=False):
     # Recalculate SVD and initialize lora_A and lora_B
     for module in model.modules():
         if isinstance(module, LoraLayer):
@@ -217,14 +236,31 @@ def reinit_lora(model):
                 lora_A = module.lora_A[adapter_name].weight.data
                 lora_B = module.lora_B[adapter_name].weight.data
                 prod = lora_B @ lora_A
-                V, S, Uh = torch.linalg.svd(prod, full_matrices=False)
+                U, S, Vh = torch.linalg.svd(prod, full_matrices=False)
                 r = lora_A.size(0)
-                Vr = V[:, :r]
-                Sr = S[:r]
-                Uhr = Uh[:r]
 
-                lora_A = Uhr
-                lora_B = Vr @ torch.diag(Sr)
+                if dual:
+                    Ur = U[:, :r]
+                    if momentum_beta > 0.0:
+                        B_smoothed = (1.0 - momentum_beta) * Ur + momentum_beta * lora_B
+                        Q, _ = torch.linalg.qr(B_smoothed)
+                        lora_B = Q[:, :r].contiguous()
+                        lora_A = lora_B.T @ prod
+                    else:
+                        lora_B = Ur
+                        lora_A = torch.diag(S[:r]) @ Vh[:r, :]
+                else:
+                    Uhr = Vh[:r, :]
+                    if momentum_beta > 0.0:
+                        A_smoothed = (1.0 - momentum_beta) * Uhr + momentum_beta * lora_A
+                        Q, _ = torch.linalg.qr(A_smoothed.T)
+                        lora_A = Q.T[:r, :].contiguous()
+                        lora_B = prod @ lora_A.T
+                    else:
+                        Vr = U[:, :r]
+                        Sr = S[:r]
+                        lora_A = Uhr
+                        lora_B = Vr @ torch.diag(Sr)
 
                 module.lora_A[adapter_name].weight.data = lora_A
                 module.lora_B[adapter_name].weight.data = lora_B
@@ -275,7 +311,10 @@ def freeze_target_layers(args, model):
     # Define target layers to freeze
     target_freeze = None
     if args.model == 'ffa':
-        target_freeze = ['lora_A', 'lora_embedding_A']
+        if getattr(args, 'dual', False):
+            target_freeze = ['lora_B', 'lora_embedding_B']
+        else:
+            target_freeze = ['lora_A', 'lora_embedding_A']
     for name, param in model.named_parameters():
         if target_freeze:
             if any(freeze_key in name for freeze_key in target_freeze):

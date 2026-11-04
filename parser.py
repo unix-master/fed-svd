@@ -67,6 +67,10 @@ class Parser:
         # FeDual
         self.parser.add_argument('--recalculate-svd-period', type=int, default=1)
         self.parser.add_argument("--svd-warmup-steps", type=int, default=0)
+        self.parser.add_argument("--subspace-momentum", type=float, default=0.0,
+                                 help="Subspace momentum beta (0.0 = vanilla FedSVD, >0.0 = Subspace EMA)")
+        self.parser.add_argument("--dual", action="store_true", default=False,
+                                 help="Dual FedSVD: train A, freeze/adapt B with orthonormal columns")
 
         # DP-SGD
         self.parser.add_argument("--dp", action="store_true")
